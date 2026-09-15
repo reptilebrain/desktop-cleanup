@@ -75,7 +75,7 @@ try {
     # To use another folder, uncomment the second $dest line and change its path.
     # A missing destination folder is created only when a file is moved.
     $dest = [Environment]::GetFolderPath('MyVideos')
-    $dest = 'D:\Video'
+    # $dest = 'D:\Video'
 
     foreach ($path in (@($sources) + @($dest))) {
         if (
