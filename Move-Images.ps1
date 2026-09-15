@@ -76,7 +76,7 @@ try {
     # To use another folder, uncomment the second $dest line and change its path.
     # A missing destination folder is created only when a file is moved.
     $dest = [Environment]::GetFolderPath('MyPictures')
-    $dest = 'D:\Images'
+    # $dest = 'D:\Images'
 
     foreach ($path in (@($sources) + @($dest))) {
         if (
