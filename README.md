@@ -1,5 +1,7 @@
 # Desktop Cleanup
 
+[![Tests](https://github.com/reptilebrain/desktop-cleanup/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/reptilebrain/desktop-cleanup/actions/workflows/tests.yml)
+
 PowerShell scripts to tidy your desktop: sort images, audio and video into folders, and send unwanted shortcuts to the Recycle Bin.
 
 I like a clean desktop. My ability to put files in the right place suggests otherwise. These scripts handle the routine tidying so good intentions no longer have to do all the work.
@@ -18,6 +20,12 @@ Each script runs independently. Use whichever ones you need.
 The media scripts process files directly in Desktop and Documents, including hidden files. They do not scan subfolders or Downloads. Sources are resolved through Windows, so redirected folders such as a OneDrive Desktop are picked up automatically.
 
 **Check `$dest` before your first run.** The last active assignment determines the destination. An uncommented custom path overrides the Windows folder above it.
+
+## Automated tests
+
+Windows PowerShell 5.1 and PowerShell 7 tests run through GitHub Actions.
+See [the test guide](tests/README.md) for local commands, isolation, coverage and
+simulated failure paths.
 
 ## Requirements
 
