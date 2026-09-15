@@ -19,6 +19,12 @@ The media scripts process files directly in Desktop and Documents, including hid
 
 **Check `$dest` before your first run.** The last active assignment determines the destination. An uncommented custom path overrides the Windows folder above it.
 
+## Automated tests
+
+Windows PowerShell 5.1 and PowerShell 7 tests run through GitHub Actions.
+See [the test guide](tests/README.md) for local commands, isolation, coverage and
+simulated failure paths.
+
 ## Requirements
 
 - Windows with Windows PowerShell 5.1 or PowerShell 7. The scripts are written for both; this is not a claim of testing every version.
