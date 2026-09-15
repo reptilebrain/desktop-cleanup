@@ -17,7 +17,7 @@ Each script runs independently. Use whichever ones you need.
 
 The media scripts process files directly in Desktop and Documents, including hidden files. They do not scan subfolders or Downloads. Sources are resolved through Windows, so redirected folders such as a OneDrive Desktop are picked up automatically.
 
-**Check `$dest` before your first run.** The last active assignment determines the destination. If the audio script contains an uncommented `$dest = 'D:\Audio'` line, it uses that folder rather than Music.
+**Check `$dest` before your first run.** The last active assignment determines the destination. An uncommented custom path overrides the Windows folder above it.
 
 ## Requirements
 
@@ -174,32 +174,87 @@ The script requests recycling through Windows. Use it in a logged-in desktop ses
 
 ## Task Scheduler
 
-Create a separate task for each script you want to run. This makes schedules and results easier to manage.
+Use a separate task for each script you want to run. If you already have scheduled cleanup tasks, you can replace the code in your existing script files and update each task's arguments. There is no need to rename those files: the path after `-File` must match the file you actually use.
 
-1. Open **Task Scheduler** and choose **Create Task**.
-2. On **General**, select your own account and **Run only when user is logged on**. This is required for the shortcut script's interactive recycling operation and is a straightforward setup for all four scripts. Do not use `SYSTEM`: the media folders are resolved for the account running the task.
-3. On **Triggers**, choose a schedule, such as once each day while you normally use the computer.
-4. On **Actions**, choose **Start a program** and configure the fields below.
-5. On **Settings**, set **If the task is already running** to **Do not start a new instance**. This prevents overlapping scheduled runs of the same task, as described by [Microsoft's task instance policy](https://learn.microsoft.com/en-us/windows/win32/api/taskschd/ne-taskschd-task_instances_policy).
-6. Save the task, right-click it and choose **Run**, then check the log and **Last Run Result**.
+### Create or update a task
 
-For example, with scripts stored in `C:\Scripts\DesktopCleanup`:
+1. Open **Task Scheduler**. Choose **Create Task** for a new task, or open **Properties** on an existing one.
+2. On **General**, select your own Windows account. The scripts resolve Desktop and Documents for the account running them, so do not use `SYSTEM`.
+3. Select **Run only when user is logged on**. This is required for the shortcut script's recycling operation and is a straightforward setup for all four scripts.
+4. On **Triggers**, choose when to run, such as once each day while you normally use the computer. Keep your existing triggers if they already suit you.
+5. On **Actions**, choose **Start a program** and use the appropriate example below.
+6. On **Settings**, set **If the task is already running** to **Do not start a new instance** to avoid overlapping scheduled runs of that task.
+7. Save the task, right-click it and choose **Run**, then check the log and **Last Run Result**.
+
+### Audio, images and video
+
+These examples assume the repository scripts are stored in `C:\Scripts\DesktopCleanup`. Adjust every path to match your installation.
 
 | Action field | Value |
 | --- | --- |
 | Program/script | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` |
-| Add arguments | `-NoProfile -File "C:\Scripts\DesktopCleanup\Move-Audio.ps1" -MinAgeMinutes 60` |
 | Start in | `C:\Scripts\DesktopCleanup` |
 
-Adjust the paths to your installation. The executable above runs Windows PowerShell; use the full path to `pwsh.exe` if you prefer your installed PowerShell 7. The argument structure places script options after `-File`, following [Microsoft's command-line documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1).
+Enter one of the following lines in **Add arguments**, depending on the task.
 
-Change the script filename for images or video. For shortcut cleanup, use:
+**Audio:**
 
 ```text
--NoProfile -File "C:\Scripts\DesktopCleanup\Remove-DesktopShortcuts.ps1"
+-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Scripts\DesktopCleanup\Move-Audio.ps1" -MinAgeMinutes 60
 ```
 
-Add `-IncludePublicDesktop` if wanted. For public desktop permissions, **Run with highest privileges** may be needed when using an administrator account. It is not normally needed for your own media folders.
+**Images:**
+
+```text
+-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Scripts\DesktopCleanup\Move-Images.ps1" -MinAgeMinutes 60
+```
+
+**Video:**
+
+```text
+-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Scripts\DesktopCleanup\Move-Video.ps1" -MinAgeMinutes 60
+```
+
+The executable above runs Windows PowerShell. If you use PowerShell 7, select the full path to your installed `pwsh.exe` instead. Keep **Program/script** separate from **Add arguments**; the argument lines are not standalone commands to paste into a PowerShell prompt.
+
+### What the switches do
+
+| Switch | Purpose |
+| --- | --- |
+| `-NoProfile` | Starts PowerShell without loading profile scripts. |
+| `-NonInteractive` | Makes interactive PowerShell prompts fail instead of waiting for input. It does not suppress every Windows or application dialog. |
+| `-WindowStyle Hidden` | Hides the PowerShell window. |
+| `-ExecutionPolicy Bypass` | Requests execution-policy bypass for this process; it does not permanently change the configured policy. Group Policy can take precedence. |
+| `-File "..."` | Selects the script to run. PowerShell's own switches go before this option. |
+| `-MinAgeMinutes 60` | A media-script parameter: skips files created or modified within the previous 60 minutes. Use `0` to disable the age check. |
+
+The first four switches configure PowerShell. Parameters after the script path belong to the script. See [Microsoft's PowerShell command-line documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1).
+
+`Bypass` does not grant administrator rights or bypass filesystem permissions. It also does not override `MachinePolicy` or `UserPolicy` set through Group Policy. You can omit it if your existing execution policy already permits these scripts. See [Microsoft's execution-policy documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies).
+
+### Desktop shortcuts
+
+Use the same executable and working folder, with this **Add arguments** line:
+
+```text
+-NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\DesktopCleanup\Remove-DesktopShortcuts.ps1"
+```
+
+To include the public desktop:
+
+```text
+-NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\DesktopCleanup\Remove-DesktopShortcuts.ps1" -IncludePublicDesktop
+```
+
+These examples deliberately omit `-NonInteractive` and `-WindowStyle Hidden` because recycling may involve Windows error dialogs. `-NonInteractive` itself is not the same as running outside a logged-in desktop session; the task's **Run only when user is logged on** setting is what matters here.
+
+The shortcut script does not accept `-MinAgeMinutes`. For public desktop permissions, **Run with highest privileges** may be needed when using an administrator account. It is not normally needed for your own media folders.
+
+### Check the task before leaving it to run
+
+Test the script manually with `-DryRun` first. Then run the task and inspect its log. For troubleshooting a media task, temporarily remove `-WindowStyle Hidden` so the console is not deliberately hidden; run the command manually if you need to read startup errors before the window closes.
+
+A scheduled dry run produces no log, so a hidden `-DryRun` task will not give you a saved preview. Use the visible manual preview for that.
 
 ## Logs and results
 
