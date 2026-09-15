@@ -23,6 +23,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Run isolated tests
-        shell: ${{ matrix.shell }}
+      - name: Run isolated tests in Windows PowerShell 5.1
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        run: ./tests/Run-Tests.ps1
+      - name: Run isolated tests in PowerShell 7
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
         run: ./tests/Run-Tests.ps1
