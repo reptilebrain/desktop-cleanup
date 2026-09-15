@@ -289,3 +289,7 @@ These scripts tidy loose files. They do not understand your projects or provide 
 - Moves between drives involve copying and removing the source, so interruption can leave work to inspect. There is no automatic rollback or content verification.
 
 A clean desktop is achievable. A filing system with sound judgement remains your department.
+
+## License
+
+Released under the [MIT License](LICENSE).
