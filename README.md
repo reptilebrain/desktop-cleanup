@@ -1,5 +1,7 @@
 # Desktop Cleanup
 
+[![Tests](https://github.com/reptilebrain/desktop-cleanup/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/reptilebrain/desktop-cleanup/actions/workflows/tests.yml)
+
 PowerShell scripts to tidy your desktop: sort images, audio and video into folders, and send unwanted shortcuts to the Recycle Bin.
 
 I like a clean desktop. My ability to put files in the right place suggests otherwise. These scripts handle the routine tidying so good intentions no longer have to do all the work.
