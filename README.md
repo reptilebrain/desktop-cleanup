@@ -28,8 +28,12 @@ The media scripts process files directly in Desktop and Documents, including hid
 ## Automated tests
 
 Windows PowerShell 5.1 and PowerShell 7 tests run through GitHub Actions.
-See [the test guide](tests/README.md) for local commands, isolation, coverage and
-simulated failure paths.
+A separate workflow runs PSScriptAnalyzer 1.25.0 on the production scripts;
+unsuppressed warnings, errors and parser errors fail the analysis job.
+PSScriptAnalyzer is required only for code analysis, not for running the cleanup
+scripts or their functional tests. The analysis workflow installs it automatically.
+See [the test guide](tests/README.md) for local commands, isolation, coverage,
+documented analysis exceptions and simulated failure paths.
 
 ## Requirements
 

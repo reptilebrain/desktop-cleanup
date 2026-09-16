@@ -37,8 +37,10 @@ calls elsewhere still trigger warnings; there is no global rule exclusion.
 Every case creates a GUID-named fixture inside a dedicated temporary root. The
 test harness parses each production script and writes a temporary copy, replacing
 only destination configuration assignments and Windows `GetFolderPath` calls
-with fixture paths. This includes the active D: overrides in Images and Video,
-both source folders, the public desktop and LocalApplicationData. Path
+with fixture paths. This covers active destination assignments, both source
+folders, the public desktop and LocalApplicationData. The example D: overrides
+in Images and Video are commented out in the repository; if enabled, the test
+harness replaces those assignments as well. Path
 normalization, validation, filtering, moving, logging and exit handling remain
 the production code. Unmapped Windows folder calls stop execution.
 
