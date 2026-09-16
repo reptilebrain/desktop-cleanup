@@ -50,6 +50,14 @@ $keep = @(
     # 'REAPER.lnk'
 )
 
+function Write-ConsoleStatus {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+        Justification='Display status and dry-run previews without adding pipeline results; PowerShell 5.1+ supports the information stream.')]
+    param([string]$Message)
+
+    Write-Host $Message
+}
+
 function Write-Status {
     param(
         [string]$Level,
@@ -60,7 +68,7 @@ function Write-Status {
         Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     ), $Level, $Message
 
-    Write-Host $line
+    Write-ConsoleStatus $line
 
     if ($script:logFile) {
         try {
@@ -117,7 +125,7 @@ try {
 
         # Verify logging before processing any shortcuts.
         Set-Content -LiteralPath $script:logFile -Value 'Desktop shortcut cleanup' -Encoding UTF8
-        Write-Host "Log: $script:logFile"
+        Write-ConsoleStatus "Log: $script:logFile"
     }
 
     $recycled = 0

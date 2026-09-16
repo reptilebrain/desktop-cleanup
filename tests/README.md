@@ -12,6 +12,26 @@ continues after assertion failures, and exits 1 if any case fails. Setup errors
 also fail the process. GitHub Actions runs both engines independently on Windows
 for pull requests targeting main, pushes to main, and manual dispatch.
 
+## Static code analysis
+
+The separate Code analysis workflow runs PSScriptAnalyzer 1.25.0 with its default
+rules against every production `.ps1` file in the repository root. Warnings,
+errors, parser errors and analyzer setup failures fail the job. The test harness
+under `tests/` is outside this analysis scope. No production scripts are executed.
+
+To run locally after installing PSScriptAnalyzer 1.25.0:
+
+```powershell
+./tests/Invoke-CodeAnalysis.ps1
+```
+
+`PSAvoidUsingWriteHost` is suppressed only inside each script's small
+`Write-ConsoleStatus` helper, with an inline justification. Status and dry-run
+messages deliberately remain visible without becoming pipeline results. All
+supported versions (5.1 and 7) support the information stream used by Write-Host.
+The existing status text, log writing and exit codes are retained. New Write-Host
+calls elsewhere still trigger warnings; there is no global rule exclusion.
+
 ## Isolation
 
 Every case creates a GUID-named fixture inside a dedicated temporary root. The
