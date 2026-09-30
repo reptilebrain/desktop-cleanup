@@ -50,7 +50,16 @@ Shortcut tests are restricted to dry runs and never invoke the Recycle Bin.
 The temporary root is checked before recursive cleanup in a finally block.
 Production scripts are not modified.
 
-## Coverage: 37 cases per engine
+## Coverage: 47 cases per engine
+
+Ten screenshot-retention cases cover the default Pictures/Screenshots path,
+side-effect-free previews, creation/modification age checks, custom retention,
+empty folders, PNG-only/nonrecursive selection, invalid and missing paths,
+blocked log initialization, recycling failure and a recycling call that leaves
+the source present. Windows folders point to fixtures and the recycling function
+is replaced in the temporary script with a fixture-only rename (or an injected
+failure/no-op). The real Recycle Bin is never invoked. Scheduler registration
+and actual Windows/OneDrive recycling are not covered by these isolated tests.
 
 Each of Audio, Images and Video has 12 cases:
 
