@@ -31,14 +31,33 @@ $installDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) '
 $installed = Join-Path $installDir 'Remove-OldScreenshots.ps1'
 if (Test-Path -LiteralPath $installed) { throw "A runtime copy already exists: $installed" }
 [void][IO.Directory]::CreateDirectory($installDir)
-Copy-Item -LiteralPath $source -Destination $installed
-if ((Get-FileHash $source).Hash -ne (Get-FileHash $installed).Hash) { throw 'Runtime copy verification failed.' }
-$executable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ScreenshotPath "{1}" -KeepDays {2}' -f $installed, $folder.FullName, $KeepDays
-$action = New-ScheduledTaskAction -Execute $executable -Argument $arguments -WorkingDirectory $installDir
-$nextRun = [DateTime]::Today.Add([TimeSpan]::Parse($At))
-if ($nextRun -le (Get-Date)) { $nextRun = $nextRun.AddDays(1) }
-$trigger = New-ScheduledTaskTrigger -Daily -At $nextRun
-$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Recycle PNG screenshots older than seven days; interactive user session required. Retention is set in action arguments.'
+$staged = Join-Path $installDir ('Remove-OldScreenshots.{0}.tmp.ps1' -f [guid]::NewGuid().ToString('N'))
+$installedByThisRun = $false
+try {
+    # Stage and verify first, so a failed or interrupted copy cannot leave a
+    # partial runtime file that blocks a later installation attempt.
+    Copy-Item -LiteralPath $source -Destination $staged
+    if ((Get-FileHash $source).Hash -ne (Get-FileHash $staged).Hash) { throw 'Runtime copy verification failed.' }
+    Move-Item -LiteralPath $staged -Destination $installed
+    $installedByThisRun = $true
+    $executable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ScreenshotPath "{1}" -KeepDays {2}' -f $installed, $folder.FullName, $KeepDays
+    $action = New-ScheduledTaskAction -Execute $executable -Argument $arguments -WorkingDirectory $installDir
+    $nextRun = [DateTime]::Today.Add([TimeSpan]::Parse($At))
+    if ($nextRun -le (Get-Date)) { $nextRun = $nextRun.AddDays(1) }
+    $trigger = New-ScheduledTaskTrigger -Daily -At $nextRun
+    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Recycle PNG screenshots older than seven days; interactive user session required. Retention is set in action arguments.'
+}
+catch {
+    # A failed install must not leave a runtime copy that blocks the next attempt.
+    # Existing copies are rejected above and are never removed here.
+    if (Test-Path -LiteralPath $staged) {
+        Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
+    }
+    if ($installedByThisRun -and (Test-Path -LiteralPath $installed)) {
+        Remove-Item -LiteralPath $installed -Force -ErrorAction SilentlyContinue
+    }
+    throw
+}

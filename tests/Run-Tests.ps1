@@ -272,6 +272,59 @@ try {
             Assert-True ((Get-FileHash "$($f.Desktop)\keep.png").Hash -ceq $hash) 'Failed recycling changed bytes'
         }
     }
+    Test-Case 'screenshot installer rolls back a failed registration and can be retried' {
+        $f = New-Fixture
+        $shots = Join-Path $f.Root 'screenshots'
+        [void][IO.Directory]::CreateDirectory($shots)
+        $cleanupSource = Join-Path $f.Root 'Remove-OldScreenshots.ps1'
+        [IO.File]::WriteAllText($cleanupSource, '# isolated installer fixture')
+        $installDir = Join-Path $f.Root 'runtime-copy'
+        $installer = Get-Content -LiteralPath (Join-Path $repo 'scheduling\Register-ScreenshotCleanup.ps1') -Raw
+        $installer = $installer.Replace(
+            '$source = Join-Path (Split-Path $PSScriptRoot -Parent) ''Remove-OldScreenshots.ps1''',
+            ('$source = ''' + $cleanupSource.Replace('''', '''''') + ''''))
+        $installer = $installer.Replace(
+            '$installDir = Join-Path ([Environment]::GetFolderPath(''LocalApplicationData'')) ''DesktopCleanup\Scripts''',
+            ('$installDir = ''' + $installDir.Replace('''', '''''') + ''''))
+        $installer = $installer.Replace(
+            '[Security.Principal.WindowsIdentity]::GetCurrent().Name', "'fixture-user'")
+        Assert-True ($installer -notmatch "GetFolderPath\('LocalApplicationData'\)") 'Installer fixture retained real LocalApplicationData'
+        $installerPath = Join-Path $f.Root 'Register-ScreenshotCleanup.test.ps1'
+        [IO.File]::WriteAllText($installerPath, $installer)
+
+        function global:Get-ScheduledTask { param($TaskName, $ErrorAction) return $null }
+        function global:New-ScheduledTaskAction { param($Execute, $Argument, $WorkingDirectory) return @{} }
+        function global:New-ScheduledTaskTrigger { param([switch]$Daily, $At) return @{} }
+        function global:New-ScheduledTaskPrincipal { param($UserId, $LogonType, $RunLevel) return @{} }
+        function global:New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable, $MultipleInstances, $ExecutionTimeLimit) return @{} }
+        $global:failSchedulerRegistration = $true
+        function global:Register-ScheduledTask {
+            param($TaskName, $Action, $Trigger, $Principal, $Settings, $Description)
+            if ($global:failSchedulerRegistration) { throw 'Simulated task registration failure' }
+            return @{}
+        }
+
+        $registrationFailed = $false
+        $registrationError = ''
+        try { & $installerPath -ScreenshotPath $shots | Out-Null }
+        catch {
+            $registrationError = $_.Exception.Message
+            $registrationFailed = $registrationError -match 'Simulated task registration failure'
+        }
+        Assert-True $registrationFailed "Expected the simulated task registration failure; got: $registrationError"
+        Assert-True (@(Get-ChildItem -LiteralPath $installDir -Force).Count -eq 0) 'Failed install left a staged or installed copy'
+
+        $global:failSchedulerRegistration = $false
+        & $installerPath -ScreenshotPath $shots | Out-Null
+        $installed = Join-Path $installDir 'Remove-OldScreenshots.ps1'
+        Assert-True (Test-Path -LiteralPath $installed) 'A retry did not install the runtime copy'
+        Assert-True ((Get-FileHash $cleanupSource).Hash -ceq (Get-FileHash $installed).Hash) 'Retry installed an unverified copy'
+        $global:failSchedulerRegistration = $false
+        foreach ($mockName in @('Get-ScheduledTask', 'New-ScheduledTaskAction', 'New-ScheduledTaskTrigger',
+                'New-ScheduledTaskPrincipal', 'New-ScheduledTaskSettingsSet', 'Register-ScheduledTask')) {
+            Remove-Item -LiteralPath "Function:\global:$mockName" -ErrorAction SilentlyContinue
+        }
+    }
     Test-Case 'shortcut dry run isolates private and public desktops' {
         $f = New-Fixture
         New-File "$($f.Desktop)\private.lnk"
