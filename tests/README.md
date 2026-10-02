@@ -52,7 +52,7 @@ Production scripts are not modified.
 
 ## Coverage: 48 cases per engine
 
-Ten screenshot-retention cases cover the default Pictures/Screenshots path,
+Eleven screenshot-retention cases cover the default Pictures/Screenshots path,
 side-effect-free previews, creation/modification age checks, custom retention,
 empty folders, PNG-only/nonrecursive selection, invalid and missing paths,
 blocked log initialization, recycling failure and a recycling call that leaves
