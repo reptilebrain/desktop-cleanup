@@ -164,16 +164,25 @@ screenshot, regardless of filename. A missing folder is an error and is not crea
 ```
 
 By default the script uses `Screenshots` under the Windows Pictures folder,
-including a redirected OneDrive Pictures folder. Use `-ScreenshotPath` if your
-folder differs. Remove `-DryRun` to recycle files. Normal runs require a logged-in
-interactive Windows session and log to `screenshots-*.log` in the usual log folder.
-Dry runs create no logs or folders. Log initialization failures prevent recycling;
-later log failures stop further processing. Recycling errors return exit code 1.
+including a redirected OneDrive Pictures folder. This default is resolved for
+the Windows account running the script, so it does not contain a personal path.
+Use `-ScreenshotPath` for a different folder:
+
+```powershell
+./Remove-OldScreenshots.ps1 -ScreenshotPath 'C:\Pictures\Screenshots' -DryRun
+```
+
+Remove `-DryRun` to recycle files. Normal runs require a logged-in interactive
+Windows session and log to `screenshots-*.log` in the usual log folder. Dry runs
+create no logs or folders. Log initialization failures prevent recycling; later
+log failures stop further processing. Recycling errors return exit code 1.
 Recycling in OneDrive also removes files from that synced folder on other devices.
 The script never empties the Recycle Bin.
 
 Nightly execution is configured separately: see [scheduling](scheduling/README.md).
-The optional installer registers a 03:00 daily task and deploys a standalone copy;
+The optional installer registers a 03:00 daily task for the Windows account
+running the installer and deploys a standalone copy with the folder path you
+provide. Each user who wants a scheduled cleanup must register their own task;
 the cleanup script itself has no scheduling code.
 
 ## Desktop shortcuts
