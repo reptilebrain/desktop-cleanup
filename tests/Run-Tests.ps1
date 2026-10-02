@@ -16,7 +16,7 @@ function New-Fixture {
     $dir = Join-Path $root ([guid]::NewGuid().ToString('N'))
     $f = @{ Root = $dir; Desktop = "$dir\inbox-desktop"; MyDocuments = "$dir\inbox-documents";
         Destination = "$dir\vault"; LocalApplicationData = "$dir\local-data";
-        CommonDesktopDirectory = "$dir\public-desktop" }
+        CommonDesktopDirectory = "$dir\public-desktop"; MyPictures = "$dir\pictures" }
     foreach ($key in @('Desktop', 'MyDocuments', 'CommonDesktopDirectory')) {
         [void][IO.Directory]::CreateDirectory($f[$key])
     }
@@ -69,6 +69,25 @@ function Invoke-Isolated([string]$Name, $Fixture, [string[]]$Arguments = @(), [i
     }
     foreach ($edit in ($edits | Sort-Object { $_.Start } -Descending)) {
         $source = $source.Substring(0, $edit.Start) + $edit.Text + $source.Substring($edit.End)
+    }
+    if ($Name -eq 'Remove-OldScreenshots.ps1') {
+        # Test the full control flow without touching the real Recycle Bin.
+        $mockAst = [Management.Automation.Language.Parser]::ParseInput($source, [ref]$null, [ref]$null)
+        $recycler = @($mockAst.FindAll({ param($n)
+            $n -is [Management.Automation.Language.FunctionDefinitionAst] -and
+            $n.Name -eq 'Send-ScreenshotToRecycleBin'
+        }, $true))
+        Assert-True ($recycler.Count -eq 1) 'Expected exactly one recycling boundary'
+        $safeRoot = $Fixture.Root.Replace("'", "''")
+        $mock = '{ param([string]$LiteralPath) ' +
+            'if (-not $LiteralPath.StartsWith(''' + $safeRoot + '\'')) { throw ''Outside fixture'' }; ' +
+            '[IO.File]::Move($LiteralPath, $LiteralPath + ''.recycled'') }'
+        if ($Fixture.RecycleFailure) { $mock = '{ param([string]$LiteralPath) throw ''Simulated recycle failure'' }' }
+        if ($Fixture.RecycleNoOp) { $mock = '{ param([string]$LiteralPath) }' }
+        $extent = $recycler[0].Body.Extent
+        $source = $source.Substring(0, $extent.StartOffset) + $mock + $source.Substring($extent.EndOffset)
+        $source = $source.Replace('[Environment]::UserInteractive', '$true')
+        Assert-True ($source -notmatch '::DeleteFile\(') 'Real recycling must not remain in test copies'
     }
     Assert-True ($source -notmatch '::GetFolderPath\s*\(') 'Refusing to execute an unresolved Windows folder lookup'
     Assert-True ($source -notmatch "(?m)^\s*\`$dest\s*=\s*'D:") 'Refusing a real configured destination'
@@ -190,6 +209,120 @@ try {
             Assert-True ($out -match '\[ERROR\]') 'Move failure not reported'
             Assert-True ((Get-FileHash $path).Hash -ceq $hash) 'Locked source changed'
             Assert-True (@(Get-ChildItem $f.Destination -File).Count -eq 0) 'Failed move left a target'
+        }
+    }
+    Test-Case 'screenshots default path and dry run preserve files and logs' {
+        $f = New-Fixture
+        $shots = Join-Path $f.MyPictures 'Screenshots'
+        New-File "$shots\old.png" 1 11520 11520
+        New-File "$shots\recent.png" 2 8640 8640
+        $before = Snapshot $f
+        $out = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-DryRun')
+        Assert-True ($out -match 'Planned \(DryRun\): 1. Skipped: 1') 'Wrong retention preview'
+        Assert-True ($before -ceq (Snapshot $f)) 'Screenshot preview had side effects'
+    }
+    Test-Case 'screenshots recycle old PNG only and preserve recent/nested/other files' {
+        $f = New-Fixture
+        New-File "$($f.Desktop)\old.PNG" 1 11520 11520
+        $hash = (Get-FileHash "$($f.Desktop)\old.PNG").Hash
+        New-File "$($f.Desktop)\new-created.png" 2 8640 11520
+        New-File "$($f.Desktop)\new-modified.png" 3 11520 8640
+        New-File "$($f.Desktop)\other.jpg" 4 11520 11520
+        New-File "$($f.Desktop)\nested\keep.png" 5 11520 11520
+        $out = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $f.Desktop)
+        Assert-True ($out -match 'Recycled: 1.*Skipped: 2') 'Wrong recycled/skipped count'
+        Assert-True ((Get-FileHash "$($f.Desktop)\old.PNG.recycled").Hash -ceq $hash) 'Mock recycled bytes changed'
+        foreach ($leaf in @('new-created.png', 'new-modified.png', 'other.jpg', 'nested\keep.png')) {
+            Assert-True (Test-Path (Join-Path $f.Desktop $leaf)) "Unexpected removal: $leaf"
+        }
+    }
+    Test-Case 'screenshots custom retention and empty folder' {
+        $f = New-Fixture
+        $out = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $f.Desktop, '-DryRun')
+        Assert-True ($out -match 'Planned \(DryRun\): 0') 'Empty folder failed'
+        New-File "$($f.Desktop)\old.png" 1 11520 11520
+        $out = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $f.Desktop, '-KeepDays', '14', '-DryRun')
+        Assert-True ($out -match 'Planned \(DryRun\): 0. Skipped: 1') 'Custom retention ignored'
+    }
+    foreach ($invalidPath in @('relative', 'C:relative', '\root-relative')) {
+        Test-Case "screenshots invalid path $invalidPath has no side effects" {
+            $f = New-Fixture; $before = Snapshot $f
+            $null = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $invalidPath) 1
+            Assert-True ($before -ceq (Snapshot $f)) 'Invalid path caused writes'
+        }
+    }
+    Test-Case 'screenshots missing folder fails without writes' {
+        $f = New-Fixture; $before = Snapshot $f
+        $null = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', "$($f.Root)\missing") 1
+        Assert-True ($before -ceq (Snapshot $f)) 'Missing folder caused writes'
+    }
+    Test-Case 'screenshots blocked log initialization prevents recycling' {
+        $f = New-Fixture; New-File $f.LocalApplicationData
+        New-File "$($f.Desktop)\keep.png" 1 11520 11520
+        $before = Snapshot $f
+        $null = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $f.Desktop) 1
+        Assert-True ($before -ceq (Snapshot $f)) 'Log failure changed sources'
+    }
+    foreach ($failureMode in @('RecycleFailure', 'RecycleNoOp')) {
+        Test-Case "screenshots $failureMode returns failure and keeps source" {
+            $f = New-Fixture; $f[$failureMode] = $true
+            New-File "$($f.Desktop)\keep.png" 1 11520 11520
+            $hash = (Get-FileHash "$($f.Desktop)\keep.png").Hash
+            $null = Invoke-Isolated 'Remove-OldScreenshots.ps1' $f @('-ScreenshotPath', $f.Desktop) 1
+            Assert-True ((Get-FileHash "$($f.Desktop)\keep.png").Hash -ceq $hash) 'Failed recycling changed bytes'
+        }
+    }
+    Test-Case 'screenshot installer rolls back a failed registration and can be retried' {
+        $f = New-Fixture
+        $shots = Join-Path $f.Root 'screenshots'
+        [void][IO.Directory]::CreateDirectory($shots)
+        $cleanupSource = Join-Path $f.Root 'Remove-OldScreenshots.ps1'
+        [IO.File]::WriteAllText($cleanupSource, '# isolated installer fixture')
+        $installDir = Join-Path $f.Root 'runtime-copy'
+        $installer = Get-Content -LiteralPath (Join-Path $repo 'scheduling\Register-ScreenshotCleanup.ps1') -Raw
+        $installer = $installer.Replace(
+            '$source = Join-Path (Split-Path $PSScriptRoot -Parent) ''Remove-OldScreenshots.ps1''',
+            ('$source = ''' + $cleanupSource.Replace('''', '''''') + ''''))
+        $installer = $installer.Replace(
+            '$installDir = Join-Path ([Environment]::GetFolderPath(''LocalApplicationData'')) ''DesktopCleanup\Scripts''',
+            ('$installDir = ''' + $installDir.Replace('''', '''''') + ''''))
+        $installer = $installer.Replace(
+            '[Security.Principal.WindowsIdentity]::GetCurrent().Name', "'fixture-user'")
+        Assert-True ($installer -notmatch "GetFolderPath\('LocalApplicationData'\)") 'Installer fixture retained real LocalApplicationData'
+        $installerPath = Join-Path $f.Root 'Register-ScreenshotCleanup.test.ps1'
+        [IO.File]::WriteAllText($installerPath, $installer)
+
+        function global:Get-ScheduledTask { param($TaskName, $ErrorAction) return $null }
+        function global:New-ScheduledTaskAction { param($Execute, $Argument, $WorkingDirectory) return @{} }
+        function global:New-ScheduledTaskTrigger { param([switch]$Daily, $At) return @{} }
+        function global:New-ScheduledTaskPrincipal { param($UserId, $LogonType, $RunLevel) return @{} }
+        function global:New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable, $MultipleInstances, $ExecutionTimeLimit) return @{} }
+        $global:failSchedulerRegistration = $true
+        function global:Register-ScheduledTask {
+            param($TaskName, $Action, $Trigger, $Principal, $Settings, $Description)
+            if ($global:failSchedulerRegistration) { throw 'Simulated task registration failure' }
+            return @{}
+        }
+
+        $registrationFailed = $false
+        $registrationError = ''
+        try { & $installerPath -ScreenshotPath $shots | Out-Null }
+        catch {
+            $registrationError = $_.Exception.Message
+            $registrationFailed = $registrationError -match 'Simulated task registration failure'
+        }
+        Assert-True $registrationFailed "Expected the simulated task registration failure; got: $registrationError"
+        Assert-True (@(Get-ChildItem -LiteralPath $installDir -Force).Count -eq 0) 'Failed install left a staged or installed copy'
+
+        $global:failSchedulerRegistration = $false
+        & $installerPath -ScreenshotPath $shots | Out-Null
+        $installed = Join-Path $installDir 'Remove-OldScreenshots.ps1'
+        Assert-True (Test-Path -LiteralPath $installed) 'A retry did not install the runtime copy'
+        Assert-True ((Get-FileHash $cleanupSource).Hash -ceq (Get-FileHash $installed).Hash) 'Retry installed an unverified copy'
+        $global:failSchedulerRegistration = $false
+        foreach ($mockName in @('Get-ScheduledTask', 'New-ScheduledTaskAction', 'New-ScheduledTaskTrigger',
+                'New-ScheduledTaskPrincipal', 'New-ScheduledTaskSettingsSet', 'Register-ScheduledTask')) {
+            Remove-Item -LiteralPath "Function:\global:$mockName" -ErrorAction SilentlyContinue
         }
     }
     Test-Case 'shortcut dry run isolates private and public desktops' {

@@ -18,6 +18,7 @@ I like a clean desktop. My ability to put files in the right place suggests othe
 | `Move-Video.ps1` | Desktop and Documents | Videos, or a custom folder |
 | `Move-Images.ps1` | Desktop and Documents | Pictures, or a custom folder |
 | `Remove-DesktopShortcuts.ps1` | Your Desktop; optionally the public desktop | Sends `.lnk` shortcuts to the Recycle Bin |
+| `Remove-OldScreenshots.ps1` | Pictures/Screenshots, or an explicit folder | Recycles PNG files older than seven days |
 
 Each script runs independently. Use whichever ones you need.
 
@@ -148,6 +149,32 @@ recording - flytt 20260915-120658-2.wav
 ```
 
 “Flytt” is Swedish for “move”. The scripts do not compare file contents or remove duplicates.
+
+## Screenshot retention
+
+`Remove-OldScreenshots.ps1` keeps seven full days of PNG screenshots by default.
+Both creation and last modification time must be older than the UTC cutoff.
+Only files directly in the folder are processed; subfolders, symbolic links and
+other file formats are left alone. Every PNG in that folder is treated as a
+screenshot, regardless of filename. A missing folder is an error and is not created.
+
+```powershell
+./Remove-OldScreenshots.ps1 -DryRun
+./Remove-OldScreenshots.ps1 -ScreenshotPath 'C:\Pictures\Screenshots' -KeepDays 7 -DryRun
+```
+
+By default the script uses `Screenshots` under the Windows Pictures folder,
+including a redirected OneDrive Pictures folder. Use `-ScreenshotPath` if your
+folder differs. Remove `-DryRun` to recycle files. Normal runs require a logged-in
+interactive Windows session and log to `screenshots-*.log` in the usual log folder.
+Dry runs create no logs or folders. Log initialization failures prevent recycling;
+later log failures stop further processing. Recycling errors return exit code 1.
+Recycling in OneDrive also removes files from that synced folder on other devices.
+The script never empties the Recycle Bin.
+
+Nightly execution is configured separately: see [scheduling](scheduling/README.md).
+The optional installer registers a 03:00 daily task and deploys a standalone copy;
+the cleanup script itself has no scheduling code.
 
 ## Desktop shortcuts
 
